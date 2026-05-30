@@ -34,7 +34,7 @@ class MultiSiteCheckIn:
     def checkin_sjs66(self):
         """sjs66.com 签到"""
         print("\n" + "="*50)
-        print("正在执行 sjs66.com 签到...")
+        print("正在执行 sjs66.com 签了到...")
         print("="*50)
         
         # 从您提供的请求头中提取最新的 cookie
