@@ -1,0 +1,36 @@
+name: 自动签到
+
+on:
+  schedule:
+    # 每天北京时间 8:00 执行（UTC时间 0:00）
+    - cron: '0 0 * * *'
+    # 每天北京时间 20:00 执行（UTC时间 12:00）
+    - cron: '0 12 * * *'
+  # 允许手动触发
+  workflow_dispatch:
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v4
+    
+    - name: 设置 Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.9'
+    
+    - name: 安装依赖
+      run: |
+        pip install requests
+    
+    - name: 执行签到脚本
+      env:
+        # 从 Secrets 读取敏感信息
+        COOKIE_SJS66: ${{ secrets.COOKIE_SJS66 }}
+        COOKIE_YYG: ${{ secrets.COOKIE_YYG }}
+        SJS66_FORMHASH: ${{ secrets.SJS66_FORMHASH }}
+      run: |
+        python checkin.py
