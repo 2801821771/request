@@ -227,15 +227,15 @@ def main():
     checker.checkin_all()
     
     # 询问用户是否要重新运行
-    while True:
-        choice = input("\n是否重新运行签到？(y/n): ").lower()
-        if choice == 'y':
-            checker.checkin_all()
-        elif choice == 'n':
-            print("程序退出。")
-            break
-        else:
-            print("请输入 y 或 n。")
+ #   while True:
+      #  choice = input("\n是否重新运行签到？(y/n): ").lower()
+    #    if choice == 'y':
+  #          checker.checkin_all()
+   #     elif choice == 'n':
+   #         print("程序退出。")
+   #         break
+   #     else:
+   #         print("请输入 y 或 n。")
 
 if __name__ == "__main__":
     main()
