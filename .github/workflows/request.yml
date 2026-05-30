@@ -2,7 +2,7 @@ name: 每日触发
 
 on:
   schedule:
-    - cron: '41 5 * * *'
+    - cron: '45 5 * * *'
 
 jobs:
   trigger:
