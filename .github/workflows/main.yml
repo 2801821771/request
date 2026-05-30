@@ -1,0 +1,18 @@
+name: Cron测试
+
+on:
+  schedule:
+    - cron: '*/2 * * * *'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 输出时间
+        run: |
+          echo "======================"
+          echo "当前时间: $(date -u)"
+          echo "北京时间: $(TZ='Asia/Shanghai' date)"
+          echo "======================"
+          echo "Cron 定时任务测试成功！"
