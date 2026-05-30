@@ -1,18 +1,26 @@
-name: Cron测试
+name: main
 
 on:
-  schedule:
-    - cron: '*/2 * * * *'
+  push:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  test:
+  checkin:
     runs-on: ubuntu-latest
     steps:
-      - name: 输出时间
-        run: |
-          echo "======================"
-          echo "当前时间: $(date -u)"
-          echo "北京时间: $(TZ='Asia/Shanghai' date)"
-          echo "======================"
-          echo "Cron 定时任务测试成功！"
+      - name: 检出代码
+        uses: actions/checkout@v4
+      
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      
+      - name: 安装依赖
+        run: pip install requests
+      
+      - name: 执行签到
+        env:
+          COOKIE_YYG: ${{ secrets.COOKIE_YYG }}
+        run: python checkin.py
