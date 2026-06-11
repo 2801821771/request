@@ -127,13 +127,11 @@ class MultiSiteCheckIn:
         
         # 注意：这些 cookie 可能已过期，需要更新
         yyg_cookie = (
-            'wordpress_sec_646d318c66f2c4c0e1e8624adee79b87=w%20wd%7C1780549759%7CqOz6E2kKo27e23lKj4LOHZrvg0Z9FOE5xZCT7rSWWbz%7C94a7c18ab8cfde45f2850a830b68d99b56e0411302b2639002dceb34e444f8e5; '
-            'SITE_TOTAL_ID=ab491cf368396b8ca62e32c98087fe92; '
-            'wordpress_logged_in_646d318c66f2c4c0e1e8624adee79b87=w%20wd%7C1780549759%7CqOz6E2kKo27e23lKj4LOHZrvg0Z9FOE5xZCT7rSWWbz%7C7a844f25f483a1561543fcdb6c13fea8f9ca6002cc26aef9e1de8c88ef649069; '
+            'wordpress_sec_646d318c66f2c4c0e1e8624adee79b87=w%20wd%7C1781776893%7Cxc2x7wf1bwRGG1zZk2mtbDeP6kZwEMwsm7FogobIezI%7C9cedc2bd36b5fe96cdd5a643ad6cd74dfc071def9d37067ee200bbd9ba7e5175; '
             'history_search=%5B%22%5Cu50ac%5Cu7720%26type%3Dpost%22%2C%22%5Cu8150%5Cu5316%26type%3Dpost%22%2C%22%5Cu5973%5Cu6559%5Cu5e08%26type%3Dpost%22%2C%22%5Cu5251%5Cu661f%26type%3Dpost%22%2C%22%5Cu5c18%5Cu767d%5Cu7981%5Cu533a%26type%3Dpost%22%5D; '
-            '_ga=GA1.1.141563258.1768277006; '
-            'PHPSESSID=25e4vde8t5air71fnr1kr8qdn4; '
-            'server_name_session=9ed527fe0a78f697a86400a9241e5d25'
+            'wordpress_logged_in_646d318c66f2c4c0e1e8624adee79b87=w%20wd%7C1781776893%7Cxc2x7wf1bwRGG1zZk2mtbDeP6kZwEMwsm7FogobIezI%7C173e23ca5c1c58395c644819eb7c8f60ed5131b10ec7b574b4cd05de6cd17fe7; '
+            'PHPSESSID=ellg4ojoo84n1pmds0jbni4aq3; '
+            'server_name_session=3091bc4b73c05f1b366131a2036903bc'
         )
         
         headers = {
