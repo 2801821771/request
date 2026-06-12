@@ -22,14 +22,25 @@ class MultiSiteCheckIn:
         # 微信推送配置（替换成你的token）
         self.PUSH_TOKEN = "6b0de67e34949106bc3f83900bc267371468837923"
         
-        # 设置请求头
+        # 检测是否在 GitHub Actions 环境中运行
+        self.is_github_actions = os.getenv('GITHUB_ACTIONS') == 'true'
+        
+        # 设置请求头 - 增强版，模拟真实浏览器
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
             'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
+            'Sec-Ch-Ua': '"Microsoft Edge";v="149", "Chromium";v="149", "Not?A_Brand";v="99"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
         }
         
         # sjs66.com 的 cookies 和 formhash
@@ -99,30 +110,39 @@ class MultiSiteCheckIn:
             # 创建 session
             session = requests.Session()
             
-            # 设置 headers
+            # 设置 headers - 使用增强版
             session.headers.update(self.headers)
             
             # 设置 cookies
             session.cookies.update(self.sjs66_cookies)
             
-            # 第一步：访问首页，获取最新的 formhash（如果需要）
+            # 如果是在 GitHub Actions 中，添加延迟避免被检测
+            if self.is_github_actions:
+                print("检测到 GitHub Actions 环境，添加额外延迟...")
+                time.sleep(3)
+            
+            # 第一步：访问首页，获取最新的 formhash
             print("正在访问 sjs66.com...")
             try:
                 response = session.get('https://sjs66.com', timeout=30, verify=False)
-                print(f"首页访问成功，状态码: {response.status_code}")
+                print(f"首页访问状态码: {response.status_code}")
                 
-                # 尝试从页面中提取 formhash
-                formhash_match = re.search(r'name="formhash" value="([a-f0-9]+)"', response.text)
-                if formhash_match:
-                    self.sjs66_formhash = formhash_match.group(1)
-                    print(f"获取到新的 formhash: {self.sjs66_formhash}")
+                if response.status_code == 200:
+                    # 尝试从页面中提取 formhash
+                    formhash_match = re.search(r'name="formhash" value="([a-f0-9]+)"', response.text)
+                    if formhash_match:
+                        self.sjs66_formhash = formhash_match.group(1)
+                        print(f"获取到新的 formhash: {self.sjs66_formhash}")
+                    else:
+                        print(f"使用预设 formhash: {self.sjs66_formhash}")
                 else:
-                    print(f"使用预设 formhash: {self.sjs66_formhash}")
+                    print(f"首页访问返回 {response.status_code}，使用预设 formhash")
                     
             except Exception as e:
                 print(f"访问首页出错: {e}，继续使用预设 formhash")
             
-            time.sleep(1)
+            # 添加延迟避免请求过快
+            time.sleep(2)
             
             # 第二步：执行签到
             print("正在执行签到...")
@@ -133,42 +153,56 @@ class MultiSiteCheckIn:
             headers_ajax.update({
                 'X-Requested-With': 'XMLHttpRequest',
                 'Referer': 'https://sjs66.com/',
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
             })
             
-            response = session.get(sign_url, headers=headers_ajax, timeout=30, verify=False)
-            
-            print(f"签到响应状态码: {response.status_code}")
-            print(f"签到响应内容: {response.text[:500]}")
-            
-            # 判断签到结果
-            if response.status_code == 200:
-                response_text = response.text
+            # 多次尝试签到（最多3次）
+            max_retries = 3
+            for attempt in range(max_retries):
+                if attempt > 0:
+                    print(f"第 {attempt + 1} 次尝试...")
+                    time.sleep(3)
                 
-                if '今日已签' in response_text:
-                    print("[成功] sjs66.com: 今日已签")
-                    return "今日已签"
-                elif '签到成功' in response_text:
-                    print("[成功] sjs66.com: 签到成功")
-                    return "签到成功"
-                elif '您已经签到过了' in response_text:
-                    print("[成功] sjs66.com: 今日已签")
-                    return "今日已签"
-                elif '<![CDATA[' in response_text:
-                    match = re.search(r'<!\[CDATA\[(.*?)\]\]>', response_text, re.DOTALL)
-                    if match:
-                        result_msg = match.group(1)
-                        print(f"[成功] sjs66.com: {result_msg}")
-                        return result_msg
-                elif '成功' in response_text or '奖励' in response_text:
-                    print(f"[成功] sjs66.com: 签到请求成功")
-                    return "签到成功"
+                response = session.get(sign_url, headers=headers_ajax, timeout=30, verify=False)
+                
+                print(f"签到响应状态码: {response.status_code}")
+                
+                if response.status_code == 200:
+                    response_text = response.text
+                    print(f"签到响应内容: {response_text[:200]}")
+                    
+                    # 判断签到结果
+                    if '今日已签' in response_text:
+                        print("[成功] sjs66.com: 今日已签")
+                        return "今日已签"
+                    elif '签到成功' in response_text:
+                        print("[成功] sjs66.com: 签到成功")
+                        return "签到成功"
+                    elif '您已经签到过了' in response_text:
+                        print("[成功] sjs66.com: 今日已签")
+                        return "今日已签"
+                    elif '<![CDATA[' in response_text:
+                        match = re.search(r'<!\[CDATA\[(.*?)\]\]>', response_text, re.DOTALL)
+                        if match:
+                            result_msg = match.group(1)
+                            print(f"[成功] sjs66.com: {result_msg}")
+                            return result_msg
+                    elif '成功' in response_text or '奖励' in response_text:
+                        print(f"[成功] sjs66.com: 签到成功")
+                        return "签到成功"
+                    else:
+                        print(f"[成功] sjs66.com: 签到请求已发送")
+                        return "签到请求已发送"
+                elif response.status_code == 403:
+                    print(f"[警告] 第 {attempt + 1} 次尝试返回 403")
+                    if attempt == max_retries - 1:
+                        return None
                 else:
-                    print(f"[成功] sjs66.com: 签到请求已发送")
-                    return "签到请求已发送"
-            else:
-                error_msg = f"HTTP {response.status_code}"
-                print(f"[失败] sjs66.com: {error_msg}")
-                return None
+                    error_msg = f"HTTP {response.status_code}"
+                    print(f"[失败] sjs66.com: {error_msg}")
+                    return None
+            
+            return None
                 
         except requests.exceptions.Timeout:
             print("[失败] sjs66.com: 请求超时")
@@ -195,6 +229,9 @@ class MultiSiteCheckIn:
                 'Accept': 'application/json, text/javascript, */*; q=0.01',
                 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
                 'User-Agent': self.headers['User-Agent'],
+                'Sec-Ch-Ua': '"Microsoft Edge";v="149", "Chromium";v="149", "Not?A_Brand";v="99"',
+                'Sec-Ch-Ua-Mobile': '?0',
+                'Sec-Ch-Ua-Platform': '"Windows"',
             }
             data = {'action': 'user_checkin'}
             
@@ -233,6 +270,8 @@ class MultiSiteCheckIn:
         """执行所有签到"""
         print("\n" + "="*60)
         print(f"开始自动签到 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        if self.is_github_actions:
+            print("运行环境: GitHub Actions")
         print("="*60)
         
         results = {}
@@ -278,6 +317,9 @@ def main():
     print("无需 Edge 驱动，使用 HTTP 请求直接签到")
     print()
     
+    # 检测是否在 GitHub Actions 中运行
+    is_github_actions = os.getenv('GITHUB_ACTIONS') == 'true'
+    
     try:
         checker = MultiSiteCheckIn()
         success = checker.checkin_all()
@@ -289,7 +331,10 @@ def main():
         else:
             print("部分站点签到失败")
         
-        input("\n按 Enter 键退出...")
+        # 只在非 GitHub Actions 环境中等待用户输入
+        if not is_github_actions:
+            input("\n按 Enter 键退出...")
+        
         exit(0 if success else 1)
     except Exception as e:
         error_msg = str(e)
@@ -300,7 +345,10 @@ def main():
             checker.send_wechat_push("签到脚本运行错误", f"错误信息：{error_msg}\n时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         except:
             pass
-        input("\n按 Enter 键退出...")
+        
+        # 只在非 GitHub Actions 环境中等待用户输入
+        if not is_github_actions:
+            input("\n按 Enter 键退出...")
         exit(1)
 
 
