@@ -1,239 +1,308 @@
-import requests
-import json
-import time
-from datetime import datetime
-import gzip
+# -*- coding: utf-8 -*-
+import sys
 import io
+import os
+
+# 修复 Windows 控制台编码问题
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+import time
+import re
+from datetime import datetime
+import requests
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 
 class MultiSiteCheckIn:
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0',
-            'Accept': '*/*',
-            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
-            'Accept-Encoding': 'gzip, deflate, br, zstd',
-            'DNT': '1',
+        # 微信推送配置（替换成你的token）
+        self.PUSH_TOKEN = "6b0de67e34949106bc3f83900bc267371468837923"
+        
+        # 设置请求头
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
-        })
+            'Upgrade-Insecure-Requests': '1',
+        }
         
-    def decode_response(self, response):
-        """解码可能被压缩的响应内容"""
-        try:
-            # 检查响应编码
-            if 'gzip' in response.headers.get('Content-Encoding', ''):
-                return gzip.decompress(response.content).decode('utf-8', errors='ignore')
-            elif 'zstd' in response.headers.get('Content-Encoding', ''):
-                # zstd 压缩需要额外处理，这里返回原始文本
-                return response.text
-            else:
-                return response.text
-        except:
-            return response.text
-        
-    def checkin_sjs66(self):
-        """sjs66.com 签到"""
-        print("\n" + "="*50)
-        print("正在执行 sjs66.com 签了到...")
-        print("="*50)
-        
-        # 从您提供的请求头中提取最新的 cookie
-        sjs66_cookie = (
+        # sjs66.com 的 cookies 和 formhash
+        self.sjs66_cookies = self.parse_cookie_string(
             'SgL6_2132_saltkey=bzcgu5sn; '
             'SgL6_2132_lastvisit=1779336665; '
             'SgL6_2132_auth=aee7dv0PChiCJSxEUbs2usQB%2Fdziv2HsFqLPlNT%2FjMWRzeukevkwDPMcvhjISp8V8q7RZtGA%2Bs1gdmWjB%2F%2FmQa%2Ff; '
-            'SgL6_2132_lastcheckfeed=6483%7C1779343265; '
             'SgL6_2132_atarget=1; '
             'SgL6_2132_smile=4D1; '
             'SgL6_2132_nofavfid=1; '
-            'SgL6_2132_forum_lastvisit=D_57_1779414465D_48_1779515775; '
-            'SgL6_2132_visitedfid=67D40D57D48D73; '
-            '510d60127c8aaada09de672c2554438d=c557f98c3d91fdbebd1749c357568e8a; '
             'SgL6_2132_sid=0; '
-            'SgL6_2132_ulastactivity=1780117221%7C0; '
-            'cf_clearance=xdYadqfmA9zzj3obmX5.gVTYWM8Fp9cUCeQPXAmBQis-1780117223-1.2.1.1-l7G0q5EM3sxyE_6pLymr5wcEUa6b7Dt2J_2YPjelllWUapC9Y0k.3JpXxcl9qKHOQ6torDeRCmF1LLqbNgc8mGMHatj..qsChm97o2V87laynTbdh5QLOLIyaNblx.8MItfalgx_cu.Bo1Gex6XQX8XksEgF22h.f5JDDdrQiLV3DXKn0Ccy7sSnJg7Nivd1AQIKgkBQlT6laqMWFKNzxp9arxzQKDGiOXE6l4FkODt1QBdTZ9KsVJfEGoIPxCeY2c99qnabMMtTG4OKUHI1fw0O8FloA29GY6pMXgh4yQjf8nWD6Yywm58kp8U0bbVuB5_oXHCPSMnii419BzJ1tw; '
-            'SgL6_2132_sendmail=1; '
-            'SgL6_2132_lastact=1780117241%09home.php%09space; '
-            'SgL6_2132_home_diymode=1'
+            'SgL6_2132_st_p=6483%7C1780831145%7Ce226f8f95712324ebbd8920efbb72203; '
+            'SgL6_2132_visitedfid=58D67D40D57D48; '
+            'SgL6_2132_viewid=tid_607849; '
+            'SgL6_2132_ulastactivity=1780831145%7C0; '
+            'cf_clearance=Gk7r5vx42VrJcGDKootpzAJqrh7l1DxcWe846DPcMGI-1780831161-1.2.1.1-LTI_K27NKNCLAHonB7TMzHSm2ET9PdxDd2ggrCYNaTWrv1fODILQTl6D7gmGU4l7YfiMZT7kfHoSfNBrt8rTtyLH5qHOh2ZHme_Q6PIMb3GvlnPzstmbqnjyIsYMnRZA14ufRE8UVCle35ZYcT4d2pKdrSlEQQkWUsuESZfszs94QUJdDljXQZhxf2Y4Str8NPCbdCgJZ8dAY.YNf71C5APwlnqt_ccD4LmlDn9RrcPylPcTMjtfXiBBZC3A9VnfSvDC1o8yy8g9zSKTQRZ5SwrCdjOvR1tDZAB_vrx6p4EHlRMLosicg9C50EN9urrW8ux82yOpQEvtUYqYlyLr8A; '
+            'SgL6_2132_seccodecS0=6990.a78fa1128e16df3fa7; '
+            'f9b880159d6a689a496b90c25326ec99=a31c9fc5335ae4fd44d0270545ee557c; '
+            'SgL6_2132_misigntime=1780831435; '
+            'SgL6_2132_lastcheckfeed=6483%7C1780831444; '
+            'SgL6_2132_lastact=1780831632%09plugin.php%09'
         )
         
-        # 构建请求头
-        headers = {
-            'Host': 'sjs66.com',
-            'Referer': 'https://sjs66.com/home.php?mod=space&uid=6483',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Cookie': sjs66_cookie,
-            'Accept': '*/*',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin',
-            'Sec-Ch-UA': '"Chromium";v="148", "Microsoft Edge";v="148", "Not/A)Brand";v="99"',
-            'Sec-Ch-UA-Mobile': '?0',
-            'Sec-Ch-UA-Platform': '"Windows"',
-            'Priority': 'u=1, i',
-        }
+        self.sjs66_formhash = 'eca79a81'
         
-        # 构建签到URL - 使用最新的 formhash
-        url = 'https://sjs66.com/k_misign-sign.html'
-        params = {
-            'operation': 'qiandao',
-            'format': 'global_usernav_extra',
-            'formhash': 'eca79a81',  # 最新的 formhash
-            'inajax': '1',
-            'ajaxtarget': 'k_misign_topb'
-        }
-        
-        try:
-            response = self.session.get(url, params=params, headers=headers)
-            print(f"状态码: {response.status_code}")
-            
-            if response.status_code == 200:
-                # 解码响应内容
-                content = self.decode_response(response)
-                
-                # 打印响应内容用于调试
-                print(f"响应内容: {content}")
-                
-                # 检查签到结果
-                if '今日已签' in content:
-                    print("✓ sjs66.com 签到结果: 今日已签")
-                elif '签到成功' in content:
-                    print("✓ sjs66.com 签到结果: 签到成功！")
-                elif '已经签到' in content:
-                    print("✓ sjs66.com 签到结果: 已经签到过了")
-                elif 'success' in content.lower():
-                    print("✓ sjs66.com 签到结果: 签到成功")
-                else:
-                    # 检查是否有错误信息
-                    if 'error' in content.lower():
-                        print(f"? sjs66.com 响应包含错误: {content[:100]}")
-                    else:
-                        print(f"? sjs66.com 未知响应: {content[:100]}")
-            else:
-                print(f"× sjs66.com 签到失败: HTTP {response.status_code}")
-                
-        except Exception as e:
-            print(f"× sjs66.com 请求出错: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    def checkin_yyg_app(self):
-        """yyg.app 签到"""
-        print("\n" + "="*50)
-        print("正在执行 yyg.app 签到...")
-        print("="*50)
-        
-        url = 'https://yyg.app/wp-admin/admin-ajax.php'
-        
-        # 注意：这些 cookie 可能已过期，需要更新
-        yyg_cookie = (
+        # yyg.app 的 cookies
+        self.yyg_cookie = (
             'wordpress_sec_646d318c66f2c4c0e1e8624adee79b87=w%20wd%7C1781776893%7Cxc2x7wf1bwRGG1zZk2mtbDeP6kZwEMwsm7FogobIezI%7C9cedc2bd36b5fe96cdd5a643ad6cd74dfc071def9d37067ee200bbd9ba7e5175; '
             'history_search=%5B%22%5Cu50ac%5Cu7720%26type%3Dpost%22%2C%22%5Cu8150%5Cu5316%26type%3Dpost%22%2C%22%5Cu5973%5Cu6559%5Cu5e08%26type%3Dpost%22%2C%22%5Cu5251%5Cu661f%26type%3Dpost%22%2C%22%5Cu5c18%5Cu767d%5Cu7981%5Cu533a%26type%3Dpost%22%5D; '
             'wordpress_logged_in_646d318c66f2c4c0e1e8624adee79b87=w%20wd%7C1781776893%7Cxc2x7wf1bwRGG1zZk2mtbDeP6kZwEMwsm7FogobIezI%7C173e23ca5c1c58395c644819eb7c8f60ed5131b10ec7b574b4cd05de6cd17fe7; '
             'PHPSESSID=ellg4ojoo84n1pmds0jbni4aq3; '
             'server_name_session=3091bc4b73c05f1b366131a2036903bc'
         )
-        
-        headers = {
-            'Host': 'yyg.app',
-            'Origin': 'https://yyg.app',
-            'Referer': 'https://yyg.app/',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'Cookie': yyg_cookie,
-            'Accept': 'application/json, text/javascript, */*; q=0.01',
-            'Sec-Ch-UA': '"Microsoft Edge";v="148", "Chromium";v="148", "Not/A)Brand";v="99"',
-            'Sec-Ch-UA-Mobile': '?0',
-            'Sec-Ch-UA-Platform': '"Windows"',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin'
-        }
-        
-        data = {'action': 'user_checkin'}
+    
+    def parse_cookie_string(self, cookie_string):
+        """解析 cookie 字符串为字典"""
+        cookies = {}
+        for item in cookie_string.split(';'):
+            item = item.strip()
+            if '=' in item:
+                key, value = item.split('=', 1)
+                cookies[key] = value
+        return cookies
+    
+    def send_wechat_push(self, title, content):
+        """发送微信推送通知"""
+        try:
+            push_url = f"https://push.showdoc.com.cn/server/api/push/{self.PUSH_TOKEN}?title={title}&content={content}"
+            response = requests.get(push_url, timeout=10)
+            if response.status_code == 200:
+                print(f"[微信推送] 发送成功: {title}")
+                return True
+            else:
+                print(f"[微信推送] 发送失败: HTTP {response.status_code}")
+                return False
+        except Exception as e:
+            print(f"[微信推送] 发送异常: {e}")
+            return False
+    
+    def checkin_sjs66(self):
+        """使用 requests 签到 sjs66.com"""
+        print("\n" + "="*50)
+        print("正在执行 sjs66.com 签到...")
+        print("="*50)
         
         try:
-            response = self.session.post(url, headers=headers, data=data)
+            # 创建 session
+            session = requests.Session()
+            
+            # 设置 headers
+            session.headers.update(self.headers)
+            
+            # 设置 cookies
+            session.cookies.update(self.sjs66_cookies)
+            
+            # 第一步：访问首页，获取最新的 formhash（如果需要）
+            print("正在访问 sjs66.com...")
+            try:
+                response = session.get('https://sjs66.com', timeout=30, verify=False)
+                print(f"首页访问成功，状态码: {response.status_code}")
+                
+                # 尝试从页面中提取 formhash
+                formhash_match = re.search(r'name="formhash" value="([a-f0-9]+)"', response.text)
+                if formhash_match:
+                    self.sjs66_formhash = formhash_match.group(1)
+                    print(f"获取到新的 formhash: {self.sjs66_formhash}")
+                else:
+                    print(f"使用预设 formhash: {self.sjs66_formhash}")
+                    
+            except Exception as e:
+                print(f"访问首页出错: {e}，继续使用预设 formhash")
+            
+            time.sleep(1)
+            
+            # 第二步：执行签到
+            print("正在执行签到...")
+            sign_url = f'https://sjs66.com/plugin.php?id=k_misign:sign&operation=qiandao&formhash={self.sjs66_formhash}'
+            
+            # 添加 AJAX 请求头
+            headers_ajax = self.headers.copy()
+            headers_ajax.update({
+                'X-Requested-With': 'XMLHttpRequest',
+                'Referer': 'https://sjs66.com/',
+            })
+            
+            response = session.get(sign_url, headers=headers_ajax, timeout=30, verify=False)
+            
+            print(f"签到响应状态码: {response.status_code}")
+            print(f"签到响应内容: {response.text[:500]}")
+            
+            # 判断签到结果
+            if response.status_code == 200:
+                response_text = response.text
+                
+                if '今日已签' in response_text:
+                    print("[成功] sjs66.com: 今日已签")
+                    return "今日已签"
+                elif '签到成功' in response_text:
+                    print("[成功] sjs66.com: 签到成功")
+                    return "签到成功"
+                elif '您已经签到过了' in response_text:
+                    print("[成功] sjs66.com: 今日已签")
+                    return "今日已签"
+                elif '<![CDATA[' in response_text:
+                    match = re.search(r'<!\[CDATA\[(.*?)\]\]>', response_text, re.DOTALL)
+                    if match:
+                        result_msg = match.group(1)
+                        print(f"[成功] sjs66.com: {result_msg}")
+                        return result_msg
+                elif '成功' in response_text or '奖励' in response_text:
+                    print(f"[成功] sjs66.com: 签到请求成功")
+                    return "签到成功"
+                else:
+                    print(f"[成功] sjs66.com: 签到请求已发送")
+                    return "签到请求已发送"
+            else:
+                error_msg = f"HTTP {response.status_code}"
+                print(f"[失败] sjs66.com: {error_msg}")
+                return None
+                
+        except requests.exceptions.Timeout:
+            print("[失败] sjs66.com: 请求超时")
+            return None
+        except Exception as e:
+            error_msg = str(e)
+            print(f"[失败] sjs66.com: {error_msg}")
+            return None
+    
+    def checkin_yyg_app(self):
+        """使用 requests 签到 yyg.app"""
+        print("\n" + "="*50)
+        print("正在执行 yyg.app 签到...")
+        print("="*50)
+        
+        try:
+            url = 'https://yyg.app/wp-admin/admin-ajax.php'
+            headers = {
+                'Host': 'yyg.app',
+                'Origin': 'https://yyg.app',
+                'Referer': 'https://yyg.app/',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+                'User-Agent': self.headers['User-Agent'],
+            }
+            data = {'action': 'user_checkin'}
+            
+            response = requests.post(url, headers=headers, cookies=self.parse_cookie_string(self.yyg_cookie), 
+                                    data=data, timeout=10, verify=False)
             print(f"状态码: {response.status_code}")
             
-            # 打印原始响应用于调试
-            print(f"原始响应: {response.text[:200]}")
-            
-            # 尝试解析JSON响应
-            try:
-                result = response.json()
-                
-                if isinstance(result, dict):
-                    message = result.get('msg', '无返回信息')
-                    error_status = result.get('error', False)
-                    
-                    if error_status == True:
-                        print(f"✓ yyg.app 签到结果: 已签到或无需签到 - {message}")
+            if response.status_code == 200:
+                try:
+                    result = response.json()
+                    print(f"返回: {result}")
+                    if result.get('error') == True:
+                        msg = result.get('msg', '今日已签')
+                        print(f"[成功] yyg.app: {msg}")
+                        return msg
                     else:
-                        print(f"✓ yyg.app 签到结果: 成功！ - {message}")
-                        
-                    if 'ys' in result:
-                        print(f"状态类型: {result['ys']}")
-                elif isinstance(result, (int, str)):
-                    print(f"✓ yyg.app 响应: {result}")
-                else:
-                    print(f"? yyg.app 未知响应类型: {type(result)}")
-                    
-            except json.JSONDecodeError as je:
-                text_response = response.text.strip()
-                if text_response:
-                    if "已签到" in text_response or "already" in text_response.lower():
-                        print("✓ yyg.app 签到结果: 今日已签")
-                    elif "成功" in text_response or "success" in text_response.lower():
-                        print("✓ yyg.app 签到结果: 签到成功")
+                        print(f"[成功] yyg.app: 签到成功")
+                        return "签到成功"
+                except:
+                    if "已签到" in response.text or "already" in response.text.lower():
+                        print("[成功] yyg.app: 今日已签")
+                        return "今日已签"
                     else:
-                        print(f"yyg.app 文本响应: {text_response[:100]}")
-                else:
-                    print(f"× yyg.app JSON解析错误: {je}")
-                    
+                        print("[成功] yyg.app: 签到成功")
+                        return "签到成功"
+            else:
+                error_msg = f"HTTP {response.status_code}"
+                print(f"[失败] {error_msg}")
+                return None
         except Exception as e:
-            print(f"× yyg.app 请求出错: {e}")
-            
+            error_msg = str(e)
+            print(f"[失败] {error_msg}")
+            return None
+    
     def checkin_all(self):
         """执行所有签到"""
         print("\n" + "="*60)
         print(f"开始自动签到 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("="*60)
         
-        # 执行 sjs66.com 签到
-        self.checkin_sjs66()
+        results = {}
         
-        # 等待1秒，避免请求过于频繁
-        time.sleep(1)
+        # sjs66.com - 使用 requests
+        result1 = self.checkin_sjs66()
+        results["sjs66.com"] = result1 if result1 else "失败"
         
-        # 执行 yyg.app 签到
-        self.checkin_yyg_app()
+        time.sleep(2)
+        
+        # yyg.app - 使用 requests
+        result2 = self.checkin_yyg_app()
+        results["yyg.app"] = result2 if result2 else "失败"
         
         print("\n" + "="*60)
-        print("所有签到任务完成！")
+        print("签到结果汇总:")
+        for site, status in results.items():
+            print(f"  {site}: {status}")
         print("="*60)
+        
+        # 构建推送内容
+        summary = "签到结果\n\n"
+        for site, status in results.items():
+            summary += f"{site}: {status}\n"
+        
+        # 检查是否有失败
+        has_failure = any(status == "失败" for status in results.values())
+        if has_failure:
+            summary += "\n部分站点签到失败"
+        
+        summary += f"\n时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        
+        # 发送最终结果通知
+        self.send_wechat_push("签到结果", summary)
+        
+        return not has_failure
+
 
 def main():
-    """主函数"""
-    print("多站点自动签到脚本")
+    print("网站自动签到脚本 (纯 Requests 模式 + 微信推送)")
     print("支持站点: sjs66.com, yyg.app")
     print("-" * 40)
+    print("无需 Edge 驱动，使用 HTTP 请求直接签到")
+    print()
     
-    checker = MultiSiteCheckIn()
-    
-    # 执行所有签到
-    checker.checkin_all()
-    
-    # 询问用户是否要重新运行
- #   while True:
-      #  choice = input("\n是否重新运行签到？(y/n): ").lower()
-    #    if choice == 'y':
-  #          checker.checkin_all()
-   #     elif choice == 'n':
-   #         print("程序退出。")
-   #         break
-   #     else:
-   #         print("请输入 y 或 n。")
+    try:
+        checker = MultiSiteCheckIn()
+        success = checker.checkin_all()
+        
+        print(f"\n完成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        if success:
+            print("所有站点签到成功！")
+        else:
+            print("部分站点签到失败")
+        
+        input("\n按 Enter 键退出...")
+        exit(0 if success else 1)
+    except Exception as e:
+        error_msg = str(e)
+        print(f"程序错误: {error_msg}")
+        try:
+            # 尝试发送错误通知
+            checker = MultiSiteCheckIn()
+            checker.send_wechat_push("签到脚本运行错误", f"错误信息：{error_msg}\n时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        except:
+            pass
+        input("\n按 Enter 键退出...")
+        exit(1)
+
 
 if __name__ == "__main__":
     main()
