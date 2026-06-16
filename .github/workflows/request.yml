@@ -2,7 +2,7 @@ name: 每日触发
 
 on:
   schedule:
-    - cron: '0 2 * * *'  # 每天 UTC 11:00（北京时间 19:00）
+
   workflow_dispatch:
 
 jobs:
